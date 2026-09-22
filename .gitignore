@@ -157,6 +157,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local run output
+out/
+debug/
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -1,0 +1,13 @@
+<!--
+format: irodori
+version: 1
+cast:
+  f1: { voice: irodori_female_006, name: "アリス", gender: female }
+  m1: { voice: irodori_male_008, name: "ボブ", gender: male }
+-->
+
+地の文です。
+「おはよう」f1
+（今日はいい天気だな）m1
+「元気？」f1
+「ああ」m1

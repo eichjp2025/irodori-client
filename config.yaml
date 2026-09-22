@@ -1,0 +1,68 @@
+tts:
+  base_url: http://localhost:8088
+  model: irodori-tts
+  voice: "5"
+  response_format: mp3
+  speed: 1.0
+  api_key: null
+  request_timeout: 300
+  irodori: {}
+
+split:
+  # Split a line into multiple TTS requests when it is longer than max_chars.
+  # 0 = no client-side splitting (server-side chunking remains in effect).
+  max_chars: 140
+  # Boundary characters tried in priority order when splitting long lines.
+  boundary_chars: "。！？!?…、\n"
+
+output:
+  dir: ./out
+
+typesafe:
+  # TypeSafe System One API. Used by the `mark` subcommand (speaker attribution).
+  base_url: https://api.typesafe.ai
+  model: jev-latest
+  timeout: 300
+  # Environment variable holding the API key. Never put the key itself here.
+  api_key_env: TYPESAFE_API_KEY
+
+mark:
+  # Lines of context included before/after a chunk in the Jev state.
+  context_lines: 20
+  # Maximum number of dialogue lines asked in a single Jev request.
+  max_lines_per_request: 50
+  # Answers below this confidence are left unmarked.
+  min_confidence: 0.6
+
+debug:
+  # true (or the global --debug flag) writes every Jev request/response to
+  # <dir>/<timestamp>/ for inspection.
+  enabled: false
+  dir: ./debug
+
+cleaning:
+  symbols_remove:
+    - ♡
+    - ♥
+    - ❤
+    - ❣
+    - 💕
+    - 💗
+    - 💓
+    - 💞
+    - 💘
+    - 💖
+    - ♪
+    - ♫
+    - ♬
+    - ～
+    - 〜
+    - —
+    - ―
+    - ✱
+    - ✲
+    - ✦
+    - ✧
+    # Variation selectors (e.g. trailing on ❤️) so they don't survive a heart removal.
+    - "\uFE0E"
+    - "\uFE0F"

@@ -1,0 +1,25 @@
+<!--
+format: irodori
+version: 1
+
+cast:
+  f1: { voice: irodori_female_006, name: "アリス", gender: female, caption: "落ち着いた女性" }
+  m1: { voice: irodori_male_008, name: "ボブ", gender: male, caption: "低めの男性" }
+
+preset:
+  angry: { emoji: 😠, speed: 1.05 }
+
+profile:
+  m1a: { base: m1 }
+-->
+
+第一章　朝
+
+　アリスは窓の外を見ていた。
+
+「おはよう」f1
+　ボブは手を振った。
+
+（今日はいい天気だな）m1
+「ねえ、聞いてる？」「ちょっと！」f1
+　彼女は歌うように言った。「ララ♪」f1

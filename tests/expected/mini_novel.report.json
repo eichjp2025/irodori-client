@@ -1,0 +1,82 @@
+{
+  "dry_run": false,
+  "total_lines": 26,
+  "dialogue_lines": 4,
+  "requests": 1,
+  "marked": 4,
+  "low_confidence": 0,
+  "not_ended_with_bracket": 0,
+  "cast": {
+    "f1": {
+      "voice": "irodori_female_006",
+      "name": "アリス",
+      "gender": "female",
+      "caption": "落ち着いた女性"
+    },
+    "m1": {
+      "voice": "irodori_male_008",
+      "name": "ボブ",
+      "gender": "male",
+      "caption": "低めの男性"
+    }
+  },
+  "lines": [
+    {
+      "line": 20,
+      "kind": "dialogue",
+      "fragments": [
+        "「おはよう」"
+      ],
+      "label": "f1",
+      "confidence": 0.95,
+      "status": "marked",
+      "probabilities": {
+        "f1": 0.95,
+        "m1": 0.05
+      }
+    },
+    {
+      "line": 23,
+      "kind": "thought",
+      "fragments": [
+        "（今日はいい天気だな）"
+      ],
+      "label": "m1",
+      "confidence": 0.88,
+      "status": "marked",
+      "probabilities": {
+        "f1": 0.12,
+        "m1": 0.88
+      }
+    },
+    {
+      "line": 24,
+      "kind": "dialogue",
+      "fragments": [
+        "「ねえ、聞いてる？」",
+        "「ちょっと！」"
+      ],
+      "label": "f1",
+      "confidence": 0.72,
+      "status": "marked",
+      "probabilities": {
+        "f1": 0.72,
+        "m1": 0.28
+      }
+    },
+    {
+      "line": 25,
+      "kind": "dialogue",
+      "fragments": [
+        "「ララ♪」"
+      ],
+      "label": "f1",
+      "confidence": 0.61,
+      "status": "marked",
+      "probabilities": {
+        "f1": 0.61,
+        "m1": 0.39
+      }
+    }
+  ]
+}
