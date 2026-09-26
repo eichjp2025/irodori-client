@@ -2,7 +2,13 @@ import pytest
 
 from irodori_client.config import SplitConfig, TTSConfig
 from irodori_client.extractor import ExtractedLine
-from irodori_client.tts import build_headers, build_payload, synth_iter, synth_one
+from irodori_client.tts import (
+    build_headers,
+    build_payload,
+    output_paths,
+    synth_iter,
+    synth_one,
+)
 
 
 class _Resp:
@@ -75,9 +81,44 @@ def test_synth_iter_per_item_voice(tmp_path, monkeypatch):
     items = [ExtractedLine(line=5, text="abc", raw="")]
     synth_iter(
         items, tmp_path, TTSConfig(), SplitConfig(), "n",
-        voice_resolver=lambda item: "vX",
+        overrides_resolver=lambda item: {"voice": "vX"},
     )
     assert calls == ["vX"]
+
+
+def test_synth_iter_caption_override(tmp_path, monkeypatch):
+    seen = []
+
+    def fake(text, cfg, split):
+        seen.append(dict(cfg.irodori))
+        return b"A"
+
+    monkeypatch.setattr("irodori_client.tts.synth_one", fake)
+    cfg = TTSConfig(irodori={"caption": "global"})
+    items = [
+        ExtractedLine(line=1, text="a", raw=""),
+        ExtractedLine(line=2, text="b", raw=""),
+    ]
+    synth_iter(
+        items, tmp_path, cfg, SplitConfig(max_chars=0), "n",
+        overrides_resolver=lambda item: {
+            "caption": "line" if item.line == 1 else None
+        },
+    )
+    assert seen[0].get("caption") == "line"
+    assert "caption" not in seen[1]
+
+
+def test_output_paths_order(tmp_path):
+    items = [ExtractedLine(line=7, text="あ。い。う。", raw="")]
+    names = [
+        p.name
+        for p in output_paths(
+            items, tmp_path, TTSConfig(response_format="mp3"),
+            SplitConfig(max_chars=4), "n",
+        )
+    ]
+    assert names == ["L0007_1.mp3", "L0007_2.mp3"]
 
 
 def test_synth_iter_skip_existing(tmp_path, monkeypatch):

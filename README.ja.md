@@ -24,6 +24,8 @@ English version: [README.md](README.md)。編集時は両ファイルを同期�
 - `mark` には環境変数 `TYPESAFE_API_KEY`（`mark --init-header` では不要）。
 - `run-marked` には `config.yaml` の `tts.base_url`（既定
   `http://localhost:8088`）で到達できる Irodori-TTS-Server。
+- `run-marked --concat` には `ffmpeg`（PATH、または `config.yaml` の
+  `concat.ffmpeg` で指定）。
 
 ## インストール
 
@@ -65,6 +67,10 @@ split:
   max_chars: 140
   # 分割時に優先する境界文字（優先順）。
   boundary_chars: "。！？!?…、\n"
+
+concat:
+  # `run-marked --concat` が使う ffmpeg 実行ファイル（PATH に無い場合に上書き）。
+  ffmpeg: ffmpeg
 
 output:
   dir: ./out
@@ -112,8 +118,10 @@ python -m irodori_client run-marked out/eich_novel/eich_novel.txt -o out
 ```
 <out>/<novel_id>/<novel_id>.txt            # mark の出力（マーカー付き小説）
 <out>/<novel_id>/<novel_id>.report.json    # mark のレポート
-<out>/<novel_id>/L<line>.mp3               # run-marked（分割なし）
-<out>/<novel_id>/L<line>_<split>.mp3       # run-marked（分割あり _1, _2, ...）
+<out>/<novel_id>/L<line>.<fmt>             # run-marked（分割なし）
+<out>/<novel_id>/L<line>_<split>.<fmt>     # run-marked（分割あり _1, _2, ...）
+<out>/<novel_id>/list.txt                  # run-marked --concat（ffmpeg リスト）
+<out>/<novel_id>/<novel_id>.<fmt>          # run-marked --concat（連結音声）
 ```
 
 * `<line>` は本文の行番号（4 桁ゼロ埋め。例 `L0027`）。
@@ -179,8 +187,8 @@ cast:
 | `voice` | `run-marked` | Irodori のボイス識別子（例 `irodori_female_006`）。行ごとに使用。 |
 | `name` | `mark` | キャラクタ名。Jev の候補として送信。 |
 | `gender` | `mark` | `male` / `female` など。 |
-| `caption` | `mark` | 短い一行説明。 |
-| `description` | `mark` | 長い説明。話者同定の精度に最も効きます。 |
+| `caption` | `mark` + `run-marked` | `mark` の Jev 基準。`run-marked` は `irodori.caption`（声質・話し方）として送信。 |
+| `description` | `mark` | 長い説明。話者同定の精度に最も効きます。Irodori には送りません。 |
 
 エントリは単なる文字列でもよく、その場合は `caption` として扱われます:
 
@@ -188,6 +196,10 @@ cast:
 cast:
   f1: 落ち着いた女性
 ```
+
+> YAML のフローマッピングではコロンの後に空白が必要です。`caption: "..."` と
+> 書いてください。`caption:"..."` は `caption:"..."` という名前のキーとして
+> 解釈され、caption として認識されません。
 
 ## メタデータが irodori にどう反映されるか
 
@@ -197,7 +209,8 @@ cast:
 | --- | --- | --- |
 | `cast.<label>` キー | `mark` が付与: `「...」f1` | 話者の選択 |
 | `cast.<label>.voice` | — | その行の TTS voice |
-| `name` / `gender` / `caption` / `description` | Jev の `criteria` と state の凡例 | — |
+| `cast.<label>.caption` | Jev の `criteria` と state の凡例 | `irodori.caption`（声質・話し方） |
+| `name` / `gender` / `description` | Jev の `criteria` と state の凡例 | — |
 | `preset` / `profile` | — | 将来の感情選択用に予約 |
 
 `mark` が書き込む行末マーカーは、`run-marked` が認識する形そのものです:
@@ -274,25 +287,45 @@ out/jev_test/jev_test.report.json  # 行ごとのラベル・確信度・status�
 ## `run-marked`
 
 話者マーカー付きの行だけを音声合成します。マーカーの無い行はスキップし、
-各行は `cast.<label>.voice` の voice を使います（cast に voice が無ければ
-`config.tts.voice` にフォールバック）。
+各行は `cast.<label>.voice` と `cast.<label>.caption` を使います:
+
+* `voice` → その行の TTS voice（cast に voice が無ければ `config.tts.voice`）。
+* `caption` → Irodori に `irodori.caption`（caption 対応 Voice Design 用の
+  声質・話し方の説明）として送信。cast に `caption` が無い、または空文字なら
+  `irodori.caption` は送りません。`description` は使いません。
 
 ```bash
-# マーカー付き全行を、それぞれの cast voice で。
+# マーカー付き全行を、それぞれの cast voice/caption で。
 python -m irodori_client run-marked out/jev_test/jev_test.txt -o out
 
-# 女性話者のみ（男性 voice を未セットアップの場合など）。
-python -m irodori_client run-marked out/jev_test/jev_test.txt -o out --speakers f1,f2
+# 女性話者のみ（男性 voice を未セットアップの場合など）＋連結。
+python -m irodori_client run-marked out/jev_test/jev_test.txt -o out --speakers f1,f2 --concat
 ```
 
 フラグ:
 
 ```bash
 --speakers f1,f2   # これらのラベルのみ（カンマ/空白区切り、大小文字無視）
---voice NAME       # 全行を単一 voice で上書き
+--voice NAME       # 全行を単一 voice で上書き（caption は cast から）
+--concat           # list.txt を書き出し、<novel_id>.<fmt> に連結
 --model / --speed / --base-url / --api-key
 --skip-existing    # 既存の L*.mp3 をスキップ（冪等）
 ```
+
+### 連結（`--concat`）
+
+`--concat` は同じ選択（マーカー行 + `--speakers`）を
+`<out>/<novel_id>/<novel_id>.<fmt>` に `ffmpeg -f concat -c copy`
+（無劣化ストリームコピー）で連結します。同時に
+`<out>/<novel_id>/list.txt`（ffmpeg concat demuxer 形式）を書き出して残すので、
+同じ連結をコマンドラインから再現できます:
+
+```bash
+ffmpeg -y -f concat -safe 0 -i out/<novel_id>/list.txt -c copy -vn joined.mp3
+```
+
+欠損セグメント（生成に失敗した行など）は警告してスキップします。`ffmpeg`
+実行ファイルは `config.yaml` の `concat.ffmpeg` で上書きできます。
 
 ## 分割（チャンキング）の仕組み
 

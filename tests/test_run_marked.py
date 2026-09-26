@@ -95,3 +95,65 @@ def test_run_marked_no_match_returns_zero(tmp_path, monkeypatch):
 def test_run_marked_missing_file_returns_one(tmp_path):
     rc = _run(tmp_path, "run-marked", str(tmp_path / "nope.txt"))
     assert rc == 1
+
+
+def test_run_marked_passes_caption_from_cast(tmp_path, monkeypatch):
+    seen = []
+
+    def fake_synth_one(text, cfg, split):
+        seen.append((cfg.voice, dict(cfg.irodori)))
+        return b"A"
+
+    monkeypatch.setattr("irodori_client.tts.synth_one", fake_synth_one)
+    rc = _run(
+        tmp_path, "run-marked", str(FIXTURES / "mini_marked_cast.txt"),
+        "-o", str(tmp_path / "out"),
+    )
+    assert rc == 0
+    f1 = [iro for voice, iro in seen if voice == "irodori_female_006"]
+    m1 = [iro for voice, iro in seen if voice == "irodori_male_008"]
+    assert f1 and all(iro.get("caption") == "囁くように" for iro in f1)
+    assert m1 and all("caption" not in iro for iro in m1)
+
+
+def test_run_marked_concat_writes_list_and_output(tmp_path, monkeypatch):
+    monkeypatch.setattr("irodori_client.tts.synth_one", lambda text, cfg, split: b"A")
+    calls = []
+
+    def fake_concat(ffmpeg, list_path, output_path, log=None):
+        calls.append((ffmpeg, list_path, output_path))
+        output_path.write_bytes(b"CONCAT")
+
+    monkeypatch.setattr("irodori_client.cli.concat_audio", fake_concat)
+    out = tmp_path / "out"
+    rc = _run(
+        tmp_path, "run-marked", str(FIXTURES / "mini_marked_cast.txt"),
+        "-o", str(out), "--concat",
+    )
+    assert rc == 0
+    novel = out / "mini_marked_cast"
+    entries = (novel / "list.txt").read_text(encoding="utf-8").splitlines()
+    assert entries == [
+        "file 'L0010.mp3'", "file 'L0011.mp3'",
+        "file 'L0012.mp3'", "file 'L0013.mp3'",
+    ]
+    assert (novel / "mini_marked_cast.mp3").read_bytes() == b"CONCAT"
+    assert calls and calls[0][0] == "ffmpeg"
+
+
+def test_run_marked_concat_ffmpeg_override(tmp_path, monkeypatch):
+    monkeypatch.setattr("irodori_client.tts.synth_one", lambda text, cfg, split: b"A")
+    seen = []
+
+    def fake_concat(ffmpeg, list_path, output_path, log=None):
+        seen.append(ffmpeg)
+        output_path.write_bytes(b"C")
+
+    monkeypatch.setattr("irodori_client.cli.concat_audio", fake_concat)
+    rc = _run(
+        tmp_path, "run-marked", str(FIXTURES / "mini_marked_cast.txt"),
+        "-o", str(tmp_path / "out"), "--concat",
+        extra_config="concat:\n  ffmpeg: /opt/ffmpeg\n",
+    )
+    assert rc == 0
+    assert seen == ["/opt/ffmpeg"]

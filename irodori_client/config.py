@@ -67,6 +67,12 @@ class DebugConfig:
 
 
 @dataclass
+class ConcatConfig:
+    # ffmpeg executable used by ``run-marked --concat``.
+    ffmpeg: str = "ffmpeg"
+
+
+@dataclass
 class Config:
     tts: TTSConfig = field(default_factory=TTSConfig)
     typesafe: TypeSafeConfig = field(default_factory=TypeSafeConfig)
@@ -75,6 +81,7 @@ class Config:
     cleaning: CleaningConfig = field(default_factory=CleaningConfig)
     debug: DebugConfig = field(default_factory=DebugConfig)
     split: SplitConfig = field(default_factory=SplitConfig)
+    concat: ConcatConfig = field(default_factory=ConcatConfig)
 
 
 _DEFAULT_SYMBOLS = [
@@ -95,6 +102,7 @@ def _apply_defaults(raw: Dict[str, Any]) -> Dict[str, Any]:
     raw.setdefault("output", {})
     raw.setdefault("debug", {})
     raw.setdefault("split", {})
+    raw.setdefault("concat", {})
     cleaning = raw.setdefault("cleaning", {})
     if cleaning.get("symbols_remove") is None:
         cleaning["symbols_remove"] = list(_DEFAULT_SYMBOLS)
@@ -136,6 +144,9 @@ def load_config(path: Optional[str | os.PathLike] = None) -> Config:
             boundary_chars=str(raw["split"].get(
                 "boundary_chars", "。！？!?…、\n"
             )),
+        ),
+        concat=ConcatConfig(
+            ffmpeg=raw["concat"].get("ffmpeg", "ffmpeg"),
         ),
         typesafe=TypeSafeConfig(
             base_url=raw["typesafe"].get("base_url", "https://api.typesafe.ai"),

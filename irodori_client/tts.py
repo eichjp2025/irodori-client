@@ -11,7 +11,7 @@ import sys
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional, TextIO
+from typing import Callable, Iterable, Iterator, List, Optional, TextIO
 
 import requests
 
@@ -99,6 +99,45 @@ def chunk_item(item: object, split: SplitConfig) -> List[str]:
     )
 
 
+def output_paths(
+    items: Iterable,
+    out_dir: str | Path,
+    cfg: TTSConfig,
+    split: SplitConfig,
+    novel_id: str,
+) -> Iterator[Path]:
+    """Yield the expected output path for every chunk, in synthesis order."""
+    base = Path(out_dir) / novel_id
+    for item in items:
+        chunks = chunk_item(item, split)
+        multiple = len(chunks) > 1
+        for ci in range(1, len(chunks) + 1):
+            suffix = f"_{ci}" if multiple else ""
+            yield base / f"L{item.line:04d}{suffix}.{cfg.response_format}"
+
+
+def _apply_overrides(cfg: TTSConfig, overrides: Optional[dict]) -> TTSConfig:
+    """Per-line overrides: ``voice`` and/or ``caption``.
+
+    When an overrides dict is given, ``caption`` is fully determined by it:
+    an empty/absent caption removes any caption from ``cfg.irodori``.
+    """
+    if not overrides:
+        return cfg
+    voice = overrides.get("voice")
+    caption = overrides.get("caption")
+    irodori = dict(cfg.irodori or {})
+    if caption:
+        irodori["caption"] = caption
+    else:
+        irodori.pop("caption", None)
+    return replace(
+        cfg,
+        voice=str(voice) if voice else cfg.voice,
+        irodori=irodori,
+    )
+
+
 def synth_iter(
     items: Iterable,
     out_dir: str | Path,
@@ -107,13 +146,13 @@ def synth_iter(
     novel_id: str,
     skip_existing: bool = False,
     log: TextIO = sys.stderr,
-    voice_resolver: Optional[Callable[[object], Optional[str]]] = None,
+    overrides_resolver: Optional[Callable[[object], Optional[dict]]] = None,
 ) -> int:
     """Synthesize each item to ``<out_dir>/<novel_id>/L<line>[_<split>].<fmt>``.
 
-    Returns the number of successfully written files. When ``voice_resolver``
-    is given, it is called per item and, if it returns a voice, that voice is
-    used for the item's requests instead of ``cfg.voice``.
+    Returns the number of successfully written files. When
+    ``overrides_resolver`` is given, it returns per-item ``voice`` / ``caption``
+    overrides.
     """
     out_root = Path(out_dir)
     base = out_root / novel_id
@@ -121,11 +160,8 @@ def synth_iter(
     success = 0
 
     for item in items:
-        item_cfg = cfg
-        if voice_resolver is not None:
-            voice = voice_resolver(item)
-            if voice is not None:
-                item_cfg = replace(cfg, voice=str(voice))
+        overrides = overrides_resolver(item) if overrides_resolver else None
+        item_cfg = _apply_overrides(cfg, overrides)
         chunks = chunk_item(item, split)
         if not chunks:
             log.write(f"[warn] L{item.line:04d} empty after chunking\n")

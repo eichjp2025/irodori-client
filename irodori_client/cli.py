@@ -10,10 +10,11 @@ from typing import List, Optional, Set
 
 from .cast import parse_cast
 from .attributor import build_report, mark_novel
+from .concat import LIST_NAME, concat_audio, write_concat_list
 from .config import Config, load_config
 from .debug import DebugWriter
 from .extractor import iter_marker_lines
-from .tts import synth_iter
+from .tts import output_paths, synth_iter
 from .typesafe import TypeSafeError
 
 
@@ -238,17 +239,28 @@ def cmd_run_marked(args: argparse.Namespace, cfg: Config) -> int:
             )
         return 0
 
-    # Per-character voice: cast.<label>.voice, unless --voice was given.
+    # Per-character voice and caption from the cast block.
+    # ``--voice`` disables per-character voices.
     voice_map = {}
-    if getattr(args, "voice", None) is None and cast is not None:
-        voice_map = {
-            label: entry.voice
+    caption_map = {}
+    if cast is not None:
+        if getattr(args, "voice", None) is None:
+            voice_map = {
+                label: entry.voice
+                for label, entry in cast.cast.items()
+                if entry.voice
+            }
+        caption_map = {
+            label: entry.caption
             for label, entry in cast.cast.items()
-            if entry.voice
+            if entry.caption
         }
 
-    def resolve_voice(item) -> Optional[str]:
-        return voice_map.get(item.label)
+    def resolve_overrides(item) -> dict:
+        return {
+            "voice": voice_map.get(item.label),
+            "caption": caption_map.get(item.label),
+        }
 
     labels = sorted({m.label for m in marked})
     sys.stderr.write(
@@ -257,10 +269,11 @@ def cmd_run_marked(args: argparse.Namespace, cfg: Config) -> int:
         f"({skipped_filter} filtered out), speakers={', '.join(labels)}, "
         f"default_voice={cfg.tts.voice}\n"
     )
-    if voice_map:
+    if voice_map or caption_map:
         for label in labels:
             sys.stderr.write(
-                f"[info]   {label}: voice={voice_map.get(label, cfg.tts.voice)}\n"
+                f"[info]   {label}: voice={voice_map.get(label, cfg.tts.voice)}"
+                f" caption={caption_map.get(label, '(none)')}\n"
             )
 
     success = synth_iter(
@@ -270,12 +283,47 @@ def cmd_run_marked(args: argparse.Namespace, cfg: Config) -> int:
         cfg.split,
         novel_id,
         skip_existing=args.skip_existing,
-        voice_resolver=resolve_voice,
+        overrides_resolver=resolve_overrides,
     )
     sys.stderr.write(
         f"[done] {success} file(s) written for {len(marked)} marked line(s)\n"
     )
+
+    if getattr(args, "concat", False):
+        return _concat_marked(
+            marked, out_root, cfg, novel_id,
+            success_ok=(success >= len(marked)),
+        )
     return 0 if success >= len(marked) else 2
+
+
+def _concat_marked(marked, out_root, cfg, novel_id, success_ok: bool) -> int:
+    """Write list.txt and concatenate the existing segments (best effort)."""
+    novel_dir = Path(out_root) / novel_id
+    expected = list(output_paths(marked, out_root, cfg.tts, cfg.split, novel_id))
+    existing = [p for p in expected if p.exists() and p.stat().st_size > 0]
+    missing = len(expected) - len(existing)
+    if missing:
+        sys.stderr.write(
+            f"[warn] concat: {missing} segment(s) missing; skipped\n"
+        )
+    if not existing:
+        sys.stderr.write("[warn] concat: nothing to concatenate\n")
+        return 0 if success_ok else 2
+
+    list_path = novel_dir / LIST_NAME
+    write_concat_list(list_path, [p.name for p in existing])
+    output_path = novel_dir / f"{novel_id}.{cfg.tts.response_format}"
+    try:
+        concat_audio(cfg.concat.ffmpeg, list_path, output_path)
+    except RuntimeError as e:
+        sys.stderr.write(f"[error] concat failed: {e}\n")
+        return 2
+    sys.stderr.write(
+        f"[ok] concat: {len(existing)} segment(s) -> {output_path}\n"
+    )
+    sys.stderr.write(f"[ok] concat list: {list_path}\n")
+    return 0 if success_ok else 2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,6 +352,10 @@ def build_parser() -> argparse.ArgumentParser:
     prm.add_argument("--base-url", default=None)
     prm.add_argument("--api-key", default=None)
     prm.add_argument("--skip-existing", action="store_true")
+    prm.add_argument(
+        "--concat", action="store_true",
+        help="After synthesis, write list.txt and concatenate the segments into <novel_id>.<fmt>.",
+    )
     prm.set_defaults(func=cmd_run_marked)
 
     pk = sub.add_parser(

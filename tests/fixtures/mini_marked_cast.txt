@@ -2,7 +2,7 @@
 format: irodori
 version: 1
 cast:
-  f1: { voice: irodori_female_006, name: "アリス", gender: female }
+  f1: { voice: irodori_female_006, name: "アリス", gender: female, caption: "囁くように" }
   m1: { voice: irodori_male_008, name: "ボブ", gender: male }
 -->
 

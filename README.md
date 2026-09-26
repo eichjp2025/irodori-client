@@ -25,6 +25,8 @@ editing.
   `mark --init-header`).
 - A running Irodori-TTS-Server reachable at `config.yaml`'s `tts.base_url`
   (default `http://localhost:8088`) for `run-marked`.
+- `ffmpeg` on `PATH` (or set `concat.ffmpeg` in `config.yaml`) for
+  `run-marked --concat`.
 
 ## Install
 
@@ -66,6 +68,10 @@ split:
   max_chars: 140
   # Boundary characters tried in priority order when splitting long lines.
   boundary_chars: "。！？!?…、\n"
+
+concat:
+  # ffmpeg executable used by `run-marked --concat` (override if not on PATH).
+  ffmpeg: ffmpeg
 
 output:
   dir: ./out
@@ -113,8 +119,10 @@ The `novel_id` is the input file name without the `.txt` extension (a trailing
 ```
 <out>/<novel_id>/<novel_id>.txt            # mark output (marked novel)
 <out>/<novel_id>/<novel_id>.report.json    # mark report
-<out>/<novel_id>/L<line>.mp3               # run-marked, single chunk
-<out>/<novel_id>/L<line>_<split>.mp3       # run-marked, split line (_1, _2, ...)
+<out>/<novel_id>/L<line>.<fmt>             # run-marked, single chunk
+<out>/<novel_id>/L<line>_<split>.<fmt>     # run-marked, split line (_1, _2, ...)
+<out>/<novel_id>/list.txt                  # run-marked --concat (ffmpeg list)
+<out>/<novel_id>/<novel_id>.<fmt>          # run-marked --concat (joined audio)
 ```
 
 * `<line>` is the novel line number, zero-padded to 4 digits (`L0027`).
@@ -181,8 +189,8 @@ voice.
 | `voice` | `run-marked` | Irodori voice identifier (e.g. `irodori_female_006`). Used per line. |
 | `name` | `mark` | Character name, sent to Jev as a candidate. |
 | `gender` | `mark` | `male` / `female` / etc. |
-| `caption` | `mark` | Short one-line description. |
-| `description` | `mark` | Longer description; the most useful field for attribution accuracy. |
+| `caption` | `mark` + `run-marked` | Jev criterion for `mark`; sent to Irodori as `irodori.caption` (voice/style) by `run-marked`. |
+| `description` | `mark` | Longer description; the most useful field for attribution accuracy. Not sent to Irodori. |
 
 An entry may also be a plain string, which is treated as `caption`:
 
@@ -190,6 +198,9 @@ An entry may also be a plain string, which is treated as `caption`:
 cast:
   f1: 落ち着いた女性
 ```
+
+> YAML flow mappings need a space after the colon: write `caption: "..."`, not
+> `caption:"..."` (the latter is parsed as a key literally named `caption:"..."`).
 
 ## How the metadata maps to irodori
 
@@ -199,7 +210,8 @@ The same label drives everything:
 | --- | --- | --- |
 | `cast.<label>` key | suffix appended by `mark`: `「...」f1` | selects the speaker |
 | `cast.<label>.voice` | — | TTS voice for that line |
-| `name` / `gender` / `caption` / `description` | Jev `criteria` + state legend | — |
+| `cast.<label>.caption` | Jev `criteria` + state legend | `irodori.caption` (voice/style) |
+| `name` / `gender` / `description` | Jev `criteria` + state legend | — |
 | `preset` / `profile` | — | reserved for future emotion selection |
 
 The line-end marker written by `mark` is exactly the form `run-marked`
@@ -280,26 +292,45 @@ Behavior notes:
 
 ## `run-marked`
 
-Synthesizes only the speaker-marked lines. Lines without a marker are skipped,
-and each line uses the voice from `cast.<label>.voice` (falling back to
-`config.tts.voice` when the cast entry has none).
+Synthesizes only the speaker-marked lines. Lines without a marker are skipped.
+Each line uses `cast.<label>.voice` and `cast.<label>.caption`:
+
+* `voice` → the TTS voice for the line (falls back to `config.tts.voice`).
+* `caption` → sent to Irodori as `irodori.caption` (voice/style description for
+  caption-enabled Voice Design). If the cast entry has no `caption` or it is an
+  empty string, no `irodori.caption` is sent. `description` is not used.
 
 ```bash
-# All marked lines, each with its cast voice.
+# All marked lines, each with its cast voice/caption.
 python -m irodori_client run-marked out/jev_test/jev_test.txt -o out
 
-# Only the female speakers (male voices not set up, etc.).
-python -m irodori_client run-marked out/jev_test/jev_test.txt -o out --speakers f1,f2
+# Only the female speakers (male voices not set up, etc.), and join the result.
+python -m irodori_client run-marked out/jev_test/jev_test.txt -o out --speakers f1,f2 --concat
 ```
 
 Flags:
 
 ```bash
 --speakers f1,f2   # only these labels (comma/space separated, case-insensitive)
---voice NAME       # override every line with a single voice
+--voice NAME       # override every line with a single voice (captions still from cast)
+--concat           # write list.txt and concatenate the segments into <novel_id>.<fmt>
 --model / --speed / --base-url / --api-key
 --skip-existing    # skip existing L*.mp3 files (idempotent)
 ```
+
+### Concatenation (`--concat`)
+
+`--concat` joins the same selection (marker lines + `--speakers`) into
+`<out>/<novel_id>/<novel_id>.<fmt>` using `ffmpeg -f concat -c copy` (lossless
+stream copy). It also writes `<out>/<novel_id>/list.txt` (ffmpeg concat demuxer
+format) and keeps it, so the same join can be reproduced from the shell:
+
+```bash
+ffmpeg -y -f concat -safe 0 -i out/<novel_id>/list.txt -c copy -vn joined.mp3
+```
+
+Missing segments (e.g. a line that failed) are skipped with a warning. The
+`ffmpeg` executable can be overridden with `concat.ffmpeg` in `config.yaml`.
 
 ## How splitting works
 

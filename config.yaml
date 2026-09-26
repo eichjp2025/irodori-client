@@ -15,6 +15,10 @@ split:
   # Boundary characters tried in priority order when splitting long lines.
   boundary_chars: "。！？!?…、\n"
 
+concat:
+  # ffmpeg executable used by `run-marked --concat` (override if not on PATH).
+  ffmpeg: ffmpeg
+
 output:
   dir: ./out
 
